@@ -38,6 +38,7 @@ export interface StatusItem {
   blocker?: string;
   updatedAt: string;
   seenAt?: string;
+  nextSteps?: string;
   toggl?: TogglLink | null;
   updates: Update[];
   comments: Comment[];

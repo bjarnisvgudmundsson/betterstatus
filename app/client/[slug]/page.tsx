@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, use } from "react";
+import { useState, use, useEffect } from "react";
 import Link from "next/link";
 import { notFound, useSearchParams } from "next/navigation";
 import { useStore } from "@/lib/store";
@@ -444,7 +444,10 @@ function StatusSummaryBar({ slug }: { slug: string }) {
 function ItemCard({ item, slug, wsId, isConsultant }: { item: StatusItem; slug: string; wsId: string; isConsultant: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const [tab, setTab] = useState<"history" | "comments">("history");
-  const { addComment, addReply, changeItemState, updateItemTitle, updateItemStatus, updateItemBlocker, postUpdate } = useStore();
+  const [editingNextSteps, setEditingNextSteps] = useState(false);
+  const [nextStepsValue, setNextStepsValue] = useState(item.nextSteps || "");
+
+  const { addComment, addReply, changeItemState, updateItemTitle, updateItemStatus, updateItemBlocker, updateItemNextSteps, postUpdate } = useStore();
   const nComments = totalComments(item);
   const unread = isUnread(item);
 
@@ -470,6 +473,72 @@ function ItemCard({ item, slug, wsId, isConsultant }: { item: StatusItem; slug: 
 
         {/* ROW 2: latest status text */}
         <div style={{ fontSize: 13, color: "#6B7280", lineHeight: 1.5, paddingLeft: 19 }}>{item.latestStatus}</div>
+
+        {/* Next steps (both views show if exists, consultant can edit) */}
+        {!expanded && (editingNextSteps && isConsultant ? (
+          <div style={{ paddingLeft: 19, marginTop: 5 }} onClick={(e) => e.stopPropagation()}>
+            <input
+              value={nextStepsValue}
+              onChange={(e) => setNextStepsValue(e.target.value)}
+              onBlur={() => {
+                if (nextStepsValue.trim() !== (item.nextSteps || "")) {
+                  updateItemNextSteps(slug, item.id, nextStepsValue.trim() || undefined);
+                }
+                setEditingNextSteps(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  if (nextStepsValue.trim() !== (item.nextSteps || "")) {
+                    updateItemNextSteps(slug, item.id, nextStepsValue.trim() || undefined);
+                  }
+                  setEditingNextSteps(false);
+                } else if (e.key === "Escape") {
+                  setNextStepsValue(item.nextSteps || "");
+                  setEditingNextSteps(false);
+                }
+              }}
+              autoFocus
+              placeholder="Next steps..."
+              style={{ width: "100%", fontSize: 12, color: "#6B7280", border: "1px solid #E5E7EB", borderRadius: 3, padding: "3px 6px", outline: "none" }}
+            />
+          </div>
+        ) : item.nextSteps ? (
+          <div
+            style={{ fontSize: 12, color: "#6B7280", paddingLeft: 19, marginTop: 5, cursor: isConsultant ? "pointer" : "default", position: "relative" }}
+            onClick={(e) => {
+              if (isConsultant) {
+                e.stopPropagation();
+                setEditingNextSteps(true);
+              }
+            }}
+            onMouseEnter={(e) => {
+              if (isConsultant) {
+                (e.currentTarget as HTMLElement).style.background = "#F9FAFB";
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (isConsultant) {
+                (e.currentTarget as HTMLElement).style.background = "transparent";
+              }
+            }}
+          >
+            → {item.nextSteps}
+            {isConsultant && (
+              <span style={{ marginLeft: 4, fontSize: 10, color: "#9CA3AF", opacity: 0 }} className="edit-icon">✎</span>
+            )}
+          </div>
+        ) : isConsultant ? (
+          <div
+            style={{ fontSize: 11, color: "#9CA3AF", paddingLeft: 19, marginTop: 5, cursor: "pointer", opacity: 0 }}
+            className="add-next-steps"
+            onClick={(e) => {
+              e.stopPropagation();
+              setEditingNextSteps(true);
+            }}
+          >
+            + Next steps
+          </div>
+        ) : null)}
 
         {/* ROW 3: last comment preview (if exists) */}
         {!expanded && lastComment && (
@@ -651,7 +720,27 @@ export default function ClientPage({ params }: { params: Promise<{ slug: string 
   const { slug } = use(params);
   const searchParams = useSearchParams();
   const isConsultant = searchParams.get("view") === "consultant";
+
   const client = useStore((s) => s.clients.find((c) => c.slug === slug));
+  const loading = useStore((s) => s.loading);
+  const loadClient = useStore((s) => s.loadClient);
+
+  useEffect(() => {
+    if (!client) {
+      loadClient(slug);
+    }
+  }, [slug, client, loadClient]);
+
+  if (loading && !client) {
+    return (
+      <>
+        <NavBar />
+        <div style={{ maxWidth: 820, margin: "0 auto", padding: "32px 24px 80px", textAlign: "center", color: "#6B7280" }}>
+          Loading...
+        </div>
+      </>
+    );
+  }
 
   if (!client) return notFound();
 

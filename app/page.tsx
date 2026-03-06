@@ -1,13 +1,31 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import { useStore } from "@/lib/store";
-import { fmtDate, countByState, flatItems } from "@/lib/utils";
+import { fmtDate } from "@/lib/utils";
 import { StatusDot, StatusPill } from "@/components/atoms";
 import { NavBar } from "@/components/NavBar";
 
 export default function HomePage() {
   const clients = useStore((s) => s.clients);
+  const loading = useStore((s) => s.loading);
+  const loadClients = useStore((s) => s.loadClients);
+
+  useEffect(() => {
+    loadClients();
+  }, [loadClients]);
+
+  if (loading && clients.length === 0) {
+    return (
+      <>
+        <NavBar />
+        <div style={{ maxWidth: 820, margin: "0 auto", padding: "32px 24px 80px", textAlign: "center", color: "#6B7280" }}>
+          Loading...
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -23,8 +41,8 @@ export default function HomePage() {
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {clients.map((c) => {
-            const unread = c.pings.filter((p) => p.status === "unread").length;
+          {clients.map((c: any) => {
+            const unread = c.unreadPings || 0;
             return (
               <Link
                 key={c.id}
