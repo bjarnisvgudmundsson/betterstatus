@@ -1,0 +1,264 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { useStore } from "@/lib/store";
+import { fmtDT, countByState, flatItems, isUnread, totalComments, fmtHours } from "@/lib/utils";
+import {
+  StatusDot, StatusPill, QuickStatusPill, BlockerBadge,
+  TogglBadge, Divider, Label, Btn, Ts,
+} from "@/components/atoms";
+import { NavBar } from "@/components/NavBar";
+import { CommentThread, LastCommentPreview } from "@/components/Comments";
+import { WeeklyHistoryPanel } from "@/components/WeeklyHistory";
+import { WeeklyDigest } from "@/components/WeeklyDigest";
+import { NeedsAttentionPanel } from "@/components/NeedsAttention";
+import { PingComposer, PingResponseThread } from "@/components/Pings";
+import type { StatusItem, Workstream } from "@/lib/types";
+
+// ─── Sub-item (nested) ────────────────────────────────────────────────────────
+function NestedItem({ item }: { item: StatusItem }) {
+  return (
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "5px 0" }}>
+      <div style={{ width: 1, background: "#E5E7EB", alignSelf: "stretch", marginLeft: 10, marginRight: 2, flexShrink: 0 }} />
+      <StatusDot state={item.state} size={7} />
+      <div style={{ flex: 1 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 13, fontWeight: 500, color: "#18181B" }}>{item.title}</span>
+          <StatusPill state={item.state} small />
+        </div>
+        <div style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>{item.latestStatus}</div>
+      </div>
+      <Ts iso={item.updatedAt} />
+    </div>
+  );
+}
+
+// ─── Status item row ──────────────────────────────────────────────────────────
+function StatusItemRow({ item, slug }: { item: StatusItem; slug: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [tab, setTab] = useState<"history" | "comments">("history");
+
+  const { addComment, addReply, changeItemState } = useStore();
+  const nComments = totalComments(item);
+  const unread = isUnread(item);
+
+  return (
+    <div style={{ border: `1px solid ${unread ? "#FDE68A" : "#EBEBEB"}`, borderRadius: 6, background: unread ? "#FFFDF5" : "#FFF", marginBottom: 8, overflow: "hidden" }}>
+      <button
+        onClick={() => setExpanded((e) => !e)}
+        style={{ width: "100%", background: "none", border: "none", padding: "11px 14px", display: "flex", alignItems: "flex-start", gap: 11, textAlign: "left" }}
+      >
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, marginTop: 2 }}>
+          <StatusDot state={item.state} size={9} />
+          {unread && <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#D97706", display: "block" }} />}
+        </div>
+
+        <div style={{ flex: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 3 }}>
+            <span style={{ fontSize: 13.5, fontWeight: 600, color: "#18181B" }}>{item.title}</span>
+            <QuickStatusPill
+              state={item.state}
+              onChangeState={(s) => changeItemState(slug, item.id, s)}
+            />
+            {item.blocker && (
+              <span style={{ fontSize: 11, fontWeight: 600, color: "#DC2626", background: "#FEE2E2", padding: "1px 6px", borderRadius: 3 }}>
+                Blocked
+              </span>
+            )}
+            {unread && (
+              <span style={{ fontSize: 10, fontWeight: 600, color: "#92400E", background: "#FEF3C7", padding: "1px 6px", borderRadius: 3 }}>
+                New activity
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: 13, color: "#52525B", lineHeight: 1.55 }}>{item.latestStatus}</div>
+
+          {/* Sub-item pills on collapsed row */}
+          {!expanded && item.children?.length > 0 && (
+            <div style={{ display: "flex", gap: 5, marginTop: 7, flexWrap: "wrap" }}>
+              {item.children.map((ch) => (
+                <span key={ch.id} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: "#52525B", background: "#F3F4F6", border: "1px solid #EBEBEB", borderRadius: 4, padding: "2px 7px" }}>
+                  <StatusDot state={ch.state} size={6} />{ch.title}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Last comment preview */}
+          {!expanded && item.comments?.length > 0 && (
+            <LastCommentPreview
+              comments={item.comments}
+              onClick={() => { setExpanded(true); setTab("comments"); }}
+            />
+          )}
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginTop: 2 }}>
+          {item.toggl && <TogglBadge toggl={item.toggl} />}
+          <Ts iso={item.updatedAt} />
+          <span style={{ color: "#9CA3AF", fontSize: 11, transform: expanded ? "rotate(180deg)" : "rotate(0)", transition: "transform 0.14s" }}>▾</span>
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="sd" style={{ borderTop: "1px solid #F3F4F6", padding: "12px 14px 16px 36px" }}>
+          {item.blocker && <BlockerBadge text={item.blocker} />}
+
+          {item.children?.length > 0 && (
+            <div style={{ margin: "10px 0 4px" }}>
+              <Label>Sub-items</Label>
+              {item.children.map((ch) => <NestedItem key={ch.id} item={ch} />)}
+            </div>
+          )}
+
+          <Divider margin="12px 0" />
+
+          <div style={{ display: "flex", marginBottom: 14 }}>
+            {([["history", "Update History"], ["comments", `Comments${nComments ? ` (${nComments})` : ""}`]] as const).map(([k, l]) => (
+              <button key={k} onClick={() => setTab(k)} style={{ padding: "5px 13px", border: "1px solid", borderColor: tab === k ? "#18181B" : "#E5E7EB", background: tab === k ? "#18181B" : "transparent", color: tab === k ? "#FFF" : "#6B7280", fontSize: 12, fontWeight: 500, borderRadius: k === "history" ? "4px 0 0 4px" : "0 4px 4px 0", marginLeft: k === "comments" ? -1 : 0 }}>{l}</button>
+            ))}
+          </div>
+
+          {tab === "history" && <WeeklyHistoryPanel updates={item.updates} />}
+          {tab === "comments" && (
+            <CommentThread
+              comments={item.comments}
+              onAdd={(text) => addComment(slug, item.id, text)}
+              onReply={(cid, text) => addReply(slug, item.id, cid, text)}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Workstream section ───────────────────────────────────────────────────────
+function WorkstreamSection({ ws, slug }: { ws: Workstream; slug: string }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const counts = countByState(ws.items);
+
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <button onClick={() => setCollapsed((c) => !c)} style={{ width: "100%", background: "none", border: "none", display: "flex", alignItems: "center", gap: 10, padding: "5px 0", marginBottom: 8, textAlign: "left" }}>
+        <StatusDot state={ws.state} size={10} />
+        <span style={{ fontSize: 15, fontWeight: 600, color: "#18181B", flex: 1 }}>{ws.title}</span>
+        <div style={{ display: "flex", gap: 5 }}>
+          {counts.blocked > 0 && <StatusPill state="blocked" small />}
+          {counts.at_risk  > 0 && <StatusPill state="at_risk"  small />}
+          {counts.done     > 0 && <span style={{ fontSize: 11, color: "#9CA3AF" }}>{counts.done} done</span>}
+        </div>
+        <span style={{ color: "#9CA3AF", fontSize: 11, marginLeft: 4, transform: collapsed ? "rotate(-90deg)" : "rotate(0)", transition: "transform 0.14s" }}>▾</span>
+      </button>
+      {!collapsed && (
+        <div className="sd">
+          {ws.items.map((item) => <StatusItemRow key={item.id} item={item} slug={slug} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Status summary bar ───────────────────────────────────────────────────────
+function StatusSummaryBar({ slug }: { slug: string }) {
+  const client = useStore((s) => s.clients.find((c) => c.slug === slug))!;
+  const counts = countByState(flatItems(client.workstreams));
+
+  return (
+    <div style={{ background: "#FFF", border: "1px solid #EBEBEB", borderRadius: 6, padding: "13px 18px", marginBottom: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 4 }}>Overall Status</div>
+          <StatusPill state={client.overallState} />
+        </div>
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+          {Object.entries(counts).filter(([, v]) => v > 0).map(([state, count]) => (
+            <div key={state} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <StatusDot state={state as any} size={8} />
+              <span style={{ fontSize: 12, color: "#52525B" }}>{count} {state.replace("_", " ")}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ borderLeft: "1px solid #EBEBEB", paddingLeft: 14 }}>
+          <div style={{ fontSize: 11, color: "#9CA3AF" }}>Last updated</div>
+          <div className="mono" style={{ fontSize: 12, color: "#374151" }}>{fmtDT(client.lastUpdated)}</div>
+        </div>
+      </div>
+      {client.summary && (
+        <>
+          <Divider margin="11px 0 9px" />
+          <div style={{ fontSize: 13, color: "#52525B", lineHeight: 1.65 }}>{client.summary}</div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+export default function ClientPage({ params }: { params: { slug: string } }) {
+  const { slug } = params;
+  const [showDigest, setShowDigest] = useState(false);
+
+  const client     = useStore((s) => s.clients.find((c) => c.slug === slug));
+  const sendPing   = useStore((s) => s.sendPing);
+  const changeItem = useStore((s) => s.changeItemState);
+
+  if (!client) return notFound();
+
+  const unreadPings = client.pings.filter((p) => p.status === "unread").length;
+
+  return (
+    <>
+      <NavBar />
+      {showDigest && <WeeklyDigest client={client} onClose={() => setShowDigest(false)} />}
+
+      <div style={{ maxWidth: 820, margin: "0 auto", padding: "32px 24px 80px" }}>
+        {/* Header */}
+        <div style={{ marginBottom: 22 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+            <Link href="/" style={{ color: "#9CA3AF", fontSize: 12, textDecoration: "none" }}>← All clients</Link>
+            <span style={{ color: "#E0E0E0" }}>·</span>
+            <span style={{ fontSize: 12, color: "#9CA3AF" }}>{client.sector}</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
+            <div>
+              <h1 style={{ fontSize: 21, fontWeight: 700, color: "#18181B", letterSpacing: "-0.02em", marginBottom: 3 }}>{client.name}</h1>
+              <div style={{ fontSize: 13.5, color: "#6B7280" }}>{client.pageTitle}</div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Btn onClick={() => setShowDigest(true)}>📋 This Week</Btn>
+              <Link
+                href={`/client/${slug}/admin`}
+                style={{ padding: "6px 13px", border: "1px solid #E5E7EB", borderRadius: 5, background: "#FFF", color: "#374151", fontSize: 12, fontWeight: 500, textDecoration: "none", display: "flex", alignItems: "center", gap: 6 }}
+              >
+                ⚙ Admin
+                {unreadPings > 0 && (
+                  <span style={{ background: "#DC2626", color: "#FFF", fontSize: 10, fontWeight: 700, borderRadius: "50%", width: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    {unreadPings}
+                  </span>
+                )}
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        <StatusSummaryBar slug={slug} />
+        <NeedsAttentionPanel
+          workstreams={client.workstreams}
+          onChangeState={(itemId, state) => changeItem(slug, itemId, state)}
+        />
+        <Divider margin="0 0 22px" />
+
+        {client.workstreams.map((ws) => (
+          <WorkstreamSection key={ws.id} ws={ws} slug={slug} />
+        ))}
+
+        <Divider margin="8px 0 0" />
+        <PingResponseThread pings={client.pings} />
+        <PingComposer onSend={(text) => sendPing(slug, "Bjarni", text)} />
+      </div>
+    </>
+  );
+}
