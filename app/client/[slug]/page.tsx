@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, use } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { useStore } from "@/lib/store";
@@ -197,8 +197,8 @@ function StatusSummaryBar({ slug }: { slug: string }) {
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
-export default function ClientPage({ params }: { params: { slug: string } }) {
-  const { slug } = params;
+export default function ClientPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = use(params);
   const [showDigest, setShowDigest] = useState(false);
 
   const client     = useStore((s) => s.clients.find((c) => c.slug === slug));

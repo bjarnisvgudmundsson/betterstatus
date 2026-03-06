@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, use } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { useStore } from "@/lib/store";
@@ -21,8 +21,8 @@ function AS({ title, children }: { title: React.ReactNode; children: React.React
   );
 }
 
-export default function AdminPage({ params }: { params: { slug: string } }) {
-  const { slug } = params;
+export default function AdminPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = use(params);
   const client = useStore((s) => s.clients.find((c) => c.slug === slug));
   const { addWorkstream, addItem, postUpdate, acknowledgePing, respondPing } = useStore();
 
