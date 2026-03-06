@@ -440,19 +440,136 @@ function StatusSummaryBar({ slug }: { slug: string }) {
   );
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
-export default function ClientPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = use(params);
-  const searchParams = useSearchParams();
+// ─── Simple Client View (flat sorted list) ───────────────────────────────────
+function SimpleClientView({ client, slug }: { client: import("@/lib/types").Client; slug: string }) {
+  const sendPing = useStore((s) => s.sendPing);
+  const { addComment, addReply } = useStore();
+
+  // Flatten all items from all workstreams
+  const allItems: Array<StatusItem & { wsId: string }> = [];
+  for (const ws of client.workstreams) {
+    for (const item of ws.items) {
+      allItems.push({ ...item, wsId: ws.id });
+    }
+  }
+
+  // Sort by state priority: blocked, at_risk, on_track, not_started, done
+  const stateOrder: Record<string, number> = { blocked: 0, at_risk: 1, on_track: 2, not_started: 3, done: 4 };
+  allItems.sort((a, b) => stateOrder[a.state] - stateOrder[b.state]);
+
+  return (
+    <>
+      <NavBar />
+      <div style={{ maxWidth: 820, margin: "0 auto", padding: "32px 24px 80px" }}>
+        {/* Header */}
+        <div style={{ marginBottom: 22 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+            <Link href="/" style={{ color: "#9CA3AF", fontSize: 12, textDecoration: "none" }}>← All clients</Link>
+            <span style={{ color: "#E0E0E0" }}>·</span>
+            <span style={{ fontSize: 12, color: "#9CA3AF" }}>{client.sector}</span>
+            <span style={{ flex: 1 }} />
+            <Link href={`/client/${slug}?view=consultant`} style={{ color: "#9CA3AF", fontSize: 12, textDecoration: "none" }}>
+              → Consultant view
+            </Link>
+          </div>
+          {client.purchaserMode === "subcontractor" && client.endClientName && (
+            <div className="mono" style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 10 }}>
+              Delivered by Bjarni Sv. Guðmundsson · on behalf of {client.name} · for {client.endClientName}
+            </div>
+          )}
+          <h1 style={{ fontSize: 21, fontWeight: 700, color: "#18181B", letterSpacing: "-0.02em", marginBottom: 3 }}>{client.name}</h1>
+          <div style={{ fontSize: 13.5, color: "#6B7280" }}>{client.pageTitle}</div>
+        </div>
+
+        {/* One-line overall status */}
+        <div style={{ background: "#FFF", border: "1px solid #EBEBEB", borderRadius: 6, padding: "13px 18px", marginBottom: 20, display: "flex", alignItems: "center", gap: 12 }}>
+          <StatusPill state={client.overallState} />
+          <div style={{ flex: 1, fontSize: 13, color: "#52525B", lineHeight: 1.65 }}>{client.summary}</div>
+        </div>
+
+        <Divider margin="0 0 16px" />
+
+        {/* Flat list of all items */}
+        {allItems.map((item) => (
+          <SimpleItemRow key={item.id} item={item} slug={slug} wsId={item.wsId} addComment={addComment} addReply={addReply} />
+        ))}
+
+        <Divider margin="8px 0 0" />
+        <PingResponseThread pings={client.pings} />
+        <PingComposer onSend={(text) => sendPing(slug, "Bjarni", text)} />
+      </div>
+    </>
+  );
+}
+
+// ─── Simple Item Row (no Toggl, no activity badges, no sub-item pills, no comment preview) ───
+function SimpleItemRow({ item, slug, wsId, addComment, addReply }: { item: StatusItem; slug: string; wsId: string; addComment: any; addReply: any }) {
+  const [expanded, setExpanded] = useState(false);
+  const [tab, setTab] = useState<"history" | "comments">("history");
+  const nComments = totalComments(item);
+
+  return (
+    <div style={{ border: "1px solid #EBEBEB", borderRadius: 6, background: "#FFF", marginBottom: 8, overflow: "hidden" }}>
+      <button
+        onClick={() => setExpanded((e) => !e)}
+        style={{ width: "100%", background: "none", border: "none", padding: "11px 14px", display: "flex", alignItems: "flex-start", gap: 11, textAlign: "left", cursor: "pointer" }}
+      >
+        <StatusDot state={item.state} size={9} />
+        <div style={{ flex: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+            <span style={{ fontSize: 13.5, fontWeight: 600, color: "#18181B" }}>{item.title}</span>
+            <StatusPill state={item.state} small />
+          </div>
+          <div style={{ fontSize: 13, color: "#52525B", lineHeight: 1.55 }}>{item.latestStatus}</div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          <Ts iso={item.updatedAt} />
+          <span style={{ color: "#9CA3AF", fontSize: 11, transform: expanded ? "rotate(180deg)" : "rotate(0)", transition: "transform 0.14s" }}>▾</span>
+        </div>
+      </button>
+
+      {expanded && (
+        <div style={{ borderTop: "1px solid #F3F4F6", padding: "12px 14px 16px 36px" }}>
+          {item.blocker && (
+            <div style={{ marginBottom: 12 }}>
+              <BlockerBadge text={item.blocker} />
+            </div>
+          )}
+
+          {item.children?.length > 0 && (
+            <div style={{ margin: "10px 0 4px" }}>
+              <Label>Sub-items</Label>
+              {item.children.map((ch) => <NestedItem key={ch.id} item={ch} />)}
+            </div>
+          )}
+
+          <Divider margin="12px 0" />
+
+          <div style={{ display: "flex", marginBottom: 14 }}>
+            {([["history", "Update History"], ["comments", `Comments${nComments ? ` (${nComments})` : ""}`]] as const).map(([k, l]) => (
+              <button key={k} onClick={() => setTab(k)} style={{ padding: "5px 13px", border: "1px solid", borderColor: tab === k ? "#18181B" : "#E5E7EB", background: tab === k ? "#18181B" : "transparent", color: tab === k ? "#FFF" : "#6B7280", fontSize: 12, fontWeight: 500, borderRadius: k === "history" ? "4px 0 0 4px" : "0 4px 4px 0", marginLeft: k === "comments" ? -1 : 0 }}>{l}</button>
+            ))}
+          </div>
+
+          {tab === "history" && <WeeklyHistoryPanel updates={item.updates} />}
+          {tab === "comments" && (
+            <CommentThread
+              comments={item.comments}
+              onAdd={(text) => addComment(slug, item.id, text)}
+              onReply={(cid, text) => addReply(slug, item.id, cid, text)}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Consultant View (full features with inline editing) ─────────────────────
+function ConsultantView({ client, slug }: { client: import("@/lib/types").Client; slug: string }) {
   const [showDigest, setShowDigest] = useState(false);
-
-  const isConsultant = searchParams.get("view") === "consultant";
-  const client     = useStore((s) => s.clients.find((c) => c.slug === slug));
-  const sendPing   = useStore((s) => s.sendPing);
+  const sendPing = useStore((s) => s.sendPing);
   const changeItem = useStore((s) => s.changeItemState);
-
-  if (!client) return notFound();
-
   const unreadPings = client.pings.filter((p) => p.status === "unread").length;
 
   return (
@@ -511,7 +628,7 @@ export default function ClientPage({ params }: { params: Promise<{ slug: string 
         <Divider margin="0 0 22px" />
 
         {client.workstreams.map((ws) => (
-          <WorkstreamSection key={ws.id} ws={ws} slug={slug} isConsultant={isConsultant} />
+          <WorkstreamSection key={ws.id} ws={ws} slug={slug} isConsultant={true} />
         ))}
 
         <Divider margin="8px 0 0" />
@@ -520,4 +637,20 @@ export default function ClientPage({ params }: { params: Promise<{ slug: string 
       </div>
     </>
   );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+export default function ClientPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = use(params);
+  const searchParams = useSearchParams();
+  const isConsultant = searchParams.get("view") === "consultant";
+  const client = useStore((s) => s.clients.find((c) => c.slug === slug));
+
+  if (!client) return notFound();
+
+  if (isConsultant) {
+    return <ConsultantView client={client} slug={slug} />;
+  }
+
+  return <SimpleClientView client={client} slug={slug} />;
 }
