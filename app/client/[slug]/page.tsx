@@ -440,92 +440,49 @@ function StatusSummaryBar({ slug }: { slug: string }) {
   );
 }
 
-// ─── Simple Client View (flat sorted list) ───────────────────────────────────
-function SimpleClientView({ client, slug }: { client: import("@/lib/types").Client; slug: string }) {
-  const sendPing = useStore((s) => s.sendPing);
-  const { addComment, addReply } = useStore();
-
-  // Flatten all items from all workstreams
-  const allItems: Array<StatusItem & { wsId: string }> = [];
-  for (const ws of client.workstreams) {
-    for (const item of ws.items) {
-      allItems.push({ ...item, wsId: ws.id });
-    }
-  }
-
-  // Sort by state priority: blocked, at_risk, on_track, not_started, done
-  const stateOrder: Record<string, number> = { blocked: 0, at_risk: 1, on_track: 2, not_started: 3, done: 4 };
-  allItems.sort((a, b) => stateOrder[a.state] - stateOrder[b.state]);
-
-  return (
-    <>
-      <NavBar />
-      <div style={{ maxWidth: 820, margin: "0 auto", padding: "32px 24px 80px" }}>
-        {/* Header */}
-        <div style={{ marginBottom: 22 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-            <Link href="/" style={{ color: "#9CA3AF", fontSize: 12, textDecoration: "none" }}>← All clients</Link>
-            <span style={{ color: "#E0E0E0" }}>·</span>
-            <span style={{ fontSize: 12, color: "#9CA3AF" }}>{client.sector}</span>
-            <span style={{ flex: 1 }} />
-            <Link href={`/client/${slug}?view=consultant`} style={{ color: "#9CA3AF", fontSize: 12, textDecoration: "none" }}>
-              → Consultant view
-            </Link>
-          </div>
-          {client.purchaserMode === "subcontractor" && client.endClientName && (
-            <div className="mono" style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 10 }}>
-              Delivered by Bjarni Sv. Guðmundsson · on behalf of {client.name} · for {client.endClientName}
-            </div>
-          )}
-          <h1 style={{ fontSize: 21, fontWeight: 700, color: "#18181B", letterSpacing: "-0.02em", marginBottom: 3 }}>{client.name}</h1>
-          <div style={{ fontSize: 13.5, color: "#6B7280" }}>{client.pageTitle}</div>
-        </div>
-
-        {/* One-line overall status */}
-        <div style={{ background: "#FFF", border: "1px solid #EBEBEB", borderRadius: 6, padding: "13px 18px", marginBottom: 20, display: "flex", alignItems: "center", gap: 12 }}>
-          <StatusPill state={client.overallState} />
-          <div style={{ flex: 1, fontSize: 13, color: "#52525B", lineHeight: 1.65 }}>{client.summary}</div>
-        </div>
-
-        <Divider margin="0 0 16px" />
-
-        {/* Flat list of all items */}
-        {allItems.map((item) => (
-          <SimpleItemRow key={item.id} item={item} slug={slug} wsId={item.wsId} addComment={addComment} addReply={addReply} />
-        ))}
-
-        <Divider margin="8px 0 0" />
-        <PingResponseThread pings={client.pings} />
-        <PingComposer onSend={(text) => sendPing(slug, "Bjarni", text)} />
-      </div>
-    </>
-  );
-}
-
-// ─── Simple Item Row (no Toggl, no activity badges, no sub-item pills, no comment preview) ───
-function SimpleItemRow({ item, slug, wsId, addComment, addReply }: { item: StatusItem; slug: string; wsId: string; addComment: any; addReply: any }) {
+// ─── New 3-Row Card Component ─────────────────────────────────────────────────
+function ItemCard({ item, slug, wsId, isConsultant }: { item: StatusItem; slug: string; wsId: string; isConsultant: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const [tab, setTab] = useState<"history" | "comments">("history");
+  const { addComment, addReply, changeItemState, updateItemTitle, updateItemStatus, updateItemBlocker, postUpdate } = useStore();
   const nComments = totalComments(item);
+  const unread = isUnread(item);
+
+  // Get last comment for preview
+  const flatComments = item.comments.flatMap((c) => [c, ...(c.replies || [])]);
+  const lastComment = flatComments.length > 0 ? flatComments[flatComments.length - 1] : null;
 
   return (
-    <div style={{ border: "1px solid #EBEBEB", borderRadius: 6, background: "#FFF", marginBottom: 8, overflow: "hidden" }}>
+    <div style={{ border: `1px solid ${unread ? "#FDE68A" : "#EBEBEB"}`, borderRadius: 6, background: unread ? "#FFFDF5" : "#FFF", marginBottom: 8, overflow: "hidden" }}>
       <button
         onClick={() => setExpanded((e) => !e)}
-        style={{ width: "100%", background: "none", border: "none", padding: "11px 14px", display: "flex", alignItems: "flex-start", gap: 11, textAlign: "left", cursor: "pointer" }}
+        style={{ width: "100%", background: "none", border: "none", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 0, textAlign: "left", cursor: "pointer" }}
       >
-        <StatusDot state={item.state} size={9} />
-        <div style={{ flex: 1 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
-            <span style={{ fontSize: 13.5, fontWeight: 600, color: "#18181B" }}>{item.title}</span>
-            <StatusPill state={item.state} small />
-          </div>
-          <div style={{ fontSize: 13, color: "#52525B", lineHeight: 1.55 }}>{item.latestStatus}</div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+        {/* ROW 1: status dot + title + pill + timestamp */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+          <StatusDot state={item.state} size={9} />
+          <span style={{ fontSize: 14, fontWeight: 600, color: "#18181B", flex: 1 }}>{item.title}</span>
+          <StatusPill state={item.state} small />
+          {isConsultant && item.toggl && <TogglBadge toggl={item.toggl} />}
           <Ts iso={item.updatedAt} />
           <span style={{ color: "#9CA3AF", fontSize: 11, transform: expanded ? "rotate(180deg)" : "rotate(0)", transition: "transform 0.14s" }}>▾</span>
         </div>
+
+        {/* ROW 2: latest status text */}
+        <div style={{ fontSize: 13, color: "#6B7280", lineHeight: 1.5, paddingLeft: 19 }}>{item.latestStatus}</div>
+
+        {/* ROW 3: last comment preview (if exists) */}
+        {!expanded && lastComment && (
+          <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 6, paddingLeft: 19 }}>
+            <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#E5E7EB", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 600, color: "#6B7280", flexShrink: 0 }}>
+              {lastComment.author.charAt(0)}
+            </div>
+            <span style={{ fontSize: 11, fontWeight: 600, color: "#6B7280" }}>{lastComment.author}</span>
+            <span style={{ fontSize: 11, color: "#9CA3AF", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {lastComment.text.substring(0, 80)}{lastComment.text.length > 80 ? "…" : ""}
+            </span>
+          </div>
+        )}
       </button>
 
       {expanded && (
@@ -551,7 +508,16 @@ function SimpleItemRow({ item, slug, wsId, addComment, addReply }: { item: Statu
             ))}
           </div>
 
-          {tab === "history" && <WeeklyHistoryPanel updates={item.updates} />}
+          {tab === "history" && (
+            <>
+              {isConsultant && (
+                <InlinePostUpdate
+                  onPost={(text) => postUpdate(slug, wsId, item.id, text)}
+                />
+              )}
+              <WeeklyHistoryPanel updates={item.updates} />
+            </>
+          )}
           {tab === "comments" && (
             <CommentThread
               comments={item.comments}
@@ -565,6 +531,46 @@ function SimpleItemRow({ item, slug, wsId, addComment, addReply }: { item: Statu
   );
 }
 
+// ─── Simple Client View (flat sorted list) ───────────────────────────────────
+function SimpleClientView({ client, slug }: { client: import("@/lib/types").Client; slug: string }) {
+  const sendPing = useStore((s) => s.sendPing);
+
+  // Flatten all items from all workstreams
+  const allItems: Array<StatusItem & { wsId: string }> = [];
+  for (const ws of client.workstreams) {
+    for (const item of ws.items) {
+      allItems.push({ ...item, wsId: ws.id });
+    }
+  }
+
+  // Sort by state priority: blocked, at_risk, on_track, not_started, done
+  const stateOrder: Record<string, number> = { blocked: 0, at_risk: 1, on_track: 2, not_started: 3, done: 4 };
+  allItems.sort((a, b) => stateOrder[a.state] - stateOrder[b.state]);
+
+  return (
+    <>
+      <NavBar consultantViewLink={`/client/${slug}?view=consultant`} />
+      <div style={{ maxWidth: 820, margin: "0 auto", padding: "32px 24px 80px" }}>
+        {/* Header - minimal */}
+        <div style={{ marginBottom: 24 }}>
+          <Link href="/" style={{ color: "#9CA3AF", fontSize: 12, textDecoration: "none", marginBottom: 12, display: "inline-block" }}>← All clients</Link>
+          <h1 style={{ fontSize: 21, fontWeight: 700, color: "#18181B", letterSpacing: "-0.02em", marginBottom: 3 }}>{client.name}</h1>
+          <div style={{ fontSize: 13.5, color: "#6B7280" }}>{client.pageTitle}</div>
+        </div>
+
+        {/* Flat list of all items - 3-row cards */}
+        {allItems.map((item) => (
+          <ItemCard key={item.id} item={item} slug={slug} wsId={item.wsId} isConsultant={false} />
+        ))}
+
+        <Divider margin="16px 0 0" />
+        <PingResponseThread pings={client.pings} />
+        <PingComposer onSend={(text) => sendPing(slug, "Bjarni", text)} />
+      </div>
+    </>
+  );
+}
+
 // ─── Consultant View (full features with inline editing) ─────────────────────
 function ConsultantView({ client, slug }: { client: import("@/lib/types").Client; slug: string }) {
   const [showDigest, setShowDigest] = useState(false);
@@ -574,14 +580,6 @@ function ConsultantView({ client, slug }: { client: import("@/lib/types").Client
 
   return (
     <>
-      <style jsx global>{`
-        .sd:hover .edit-icon {
-          opacity: 1 !important;
-        }
-        .sd:hover .mark-done-btn {
-          opacity: 1 !important;
-        }
-      `}</style>
       <NavBar />
       {showDigest && <WeeklyDigest client={client} onClose={() => setShowDigest(false)} />}
 
@@ -627,8 +625,17 @@ function ConsultantView({ client, slug }: { client: import("@/lib/types").Client
         />
         <Divider margin="0 0 22px" />
 
+        {/* Workstreams with 3-row cards */}
         {client.workstreams.map((ws) => (
-          <WorkstreamSection key={ws.id} ws={ws} slug={slug} isConsultant={true} />
+          <div key={ws.id} style={{ marginBottom: 24 }}>
+            {/* Subtle workstream label */}
+            <div style={{ fontSize: 12, fontWeight: 600, color: "#9CA3AF", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              {ws.title}
+            </div>
+            {ws.items.map((item) => (
+              <ItemCard key={item.id} item={item} slug={slug} wsId={ws.id} isConsultant={true} />
+            ))}
+          </div>
         ))}
 
         <Divider margin="8px 0 0" />

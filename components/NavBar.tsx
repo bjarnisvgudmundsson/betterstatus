@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 
-export function NavBar() {
+export function NavBar({ consultantViewLink }: { consultantViewLink?: string } = {}) {
   return (
     <div style={{ borderBottom: "1px solid #EBEBEB", background: "#FFF", padding: "0 24px", display: "flex", alignItems: "center", height: 48, position: "sticky", top: 0, zIndex: 100 }}>
       <Link href="/" style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 8 }}>
@@ -11,6 +11,11 @@ export function NavBar() {
         <span style={{ fontSize: 13.5, fontWeight: 600, color: "#18181B", letterSpacing: "-0.01em" }}>Workstream Status</span>
       </Link>
       <div style={{ flex: 1 }} />
+      {consultantViewLink && (
+        <Link href={consultantViewLink} style={{ fontSize: 11, color: "#9CA3AF", textDecoration: "none", marginRight: 12 }}>
+          → Consultant view
+        </Link>
+      )}
       <span style={{ fontSize: 11, color: "#9CA3AF" }}>Bjarni Sv. Guðmundsson</span>
     </div>
   );
