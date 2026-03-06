@@ -197,8 +197,8 @@ function StatusSummaryBar({ slug }: { slug: string }) {
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
-export default async function ClientPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
+export default function ClientPage({ params }: { params: { slug: string } }) {
+  const { slug } = params;
   const [showDigest, setShowDigest] = useState(false);
 
   const client     = useStore((s) => s.clients.find((c) => c.slug === slug));

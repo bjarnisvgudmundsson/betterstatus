@@ -21,8 +21,8 @@ function AS({ title, children }: { title: React.ReactNode; children: React.React
   );
 }
 
-export default async function AdminPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
+export default function AdminPage({ params }: { params: { slug: string } }) {
+  const { slug } = params;
   const client = useStore((s) => s.clients.find((c) => c.slug === slug));
   const { addWorkstream, addItem, postUpdate, acknowledgePing, respondPing } = useStore();
 
