@@ -53,6 +53,11 @@ export default function HomePage() {
                 <div style={{ flex: 1 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ fontSize: 15, fontWeight: 600, color: "#18181B" }}>{c.name}</span>
+                    {c.purchaserMode === "subcontractor" && (
+                      <span style={{ fontSize: 10, fontWeight: 600, background: "#FEF3C7", color: "#92400E", padding: "2px 7px", borderRadius: 4 }}>
+                        via {c.name}
+                      </span>
+                    )}
                     {unread > 0 && (
                       <span style={{ fontSize: 10, fontWeight: 700, background: "#FEF3C7", color: "#78350F", padding: "1px 7px", borderRadius: 10 }}>
                         ✉ {unread} ping

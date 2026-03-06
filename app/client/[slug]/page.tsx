@@ -222,6 +222,11 @@ export default function ClientPage({ params }: { params: Promise<{ slug: string 
             <span style={{ color: "#E0E0E0" }}>·</span>
             <span style={{ fontSize: 12, color: "#9CA3AF" }}>{client.sector}</span>
           </div>
+          {client.purchaserMode === "subcontractor" && client.endClientName && (
+            <div className="mono" style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 10 }}>
+              Delivered by Bjarni Sv. Guðmundsson · on behalf of {client.name} · for {client.endClientName}
+            </div>
+          )}
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
             <div>
               <h1 style={{ fontSize: 21, fontWeight: 700, color: "#18181B", letterSpacing: "-0.02em", marginBottom: 3 }}>{client.name}</h1>

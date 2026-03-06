@@ -70,6 +70,8 @@ export interface Client {
   overallState: StatusState;
   lastUpdated: string;
   summary: string;
+  purchaserMode: "direct" | "subcontractor";
+  endClientName?: string;
   pings: Ping[];
   workstreams: Workstream[];
 }
