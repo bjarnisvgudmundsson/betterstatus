@@ -11,6 +11,9 @@ interface Store {
 
   // Item mutations
   changeItemState: (slug: string, itemId: string, state: StatusState) => void;
+  updateItemTitle: (slug: string, itemId: string, title: string) => void;
+  updateItemStatus: (slug: string, itemId: string, status: string) => void;
+  updateItemBlocker: (slug: string, itemId: string, blocker: string | undefined) => void;
   addComment: (slug: string, itemId: string, text: string) => void;
   addReply: (slug: string, itemId: string, commentId: string, text: string) => void;
   postUpdate: (slug: string, wsId: string, itemId: string, text: string) => void;
@@ -51,7 +54,34 @@ export const useStore = create<Store>()(
         set(s => ({ clients: s.clients.map(c => c.slug === slug ? fn(c) : c) })),
 
       changeItemState: (slug, itemId, state) =>
-        set(s => ({ clients: mapItem(s.clients, slug, itemId, it => ({ ...it, state })) })),
+        set(s => ({ clients: mapItem(s.clients, slug, itemId, it => ({ ...it, state, updatedAt: new Date().toISOString() })) })),
+
+      updateItemTitle: (slug, itemId, title) =>
+        set(s => ({ clients: mapItem(s.clients, slug, itemId, it => ({ ...it, title, updatedAt: new Date().toISOString() })) })),
+
+      updateItemStatus: (slug, itemId, status) =>
+        set(s => {
+          const now = new Date().toISOString();
+          const weekLabel = "Week of " + new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+          return {
+            clients: mapItem(s.clients, slug, itemId, it => ({
+              ...it,
+              latestStatus: status,
+              updatedAt: now,
+              updates: [{ id: `u-${Date.now()}`, text: status, weekLabel, timestamp: now }, ...it.updates],
+            }))
+          };
+        }),
+
+      updateItemBlocker: (slug, itemId, blocker) =>
+        set(s => ({
+          clients: mapItem(s.clients, slug, itemId, it => ({
+            ...it,
+            blocker,
+            state: blocker ? "blocked" : it.state,
+            updatedAt: new Date().toISOString()
+          }))
+        })),
 
       addComment: (slug, itemId, text) =>
         set(s => ({

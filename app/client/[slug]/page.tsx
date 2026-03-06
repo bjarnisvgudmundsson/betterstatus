@@ -2,7 +2,7 @@
 
 import { useState, use } from "react";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, useSearchParams } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { fmtDT, countByState, flatItems, isUnread, totalComments, fmtHours } from "@/lib/utils";
 import {
@@ -16,6 +16,111 @@ import { WeeklyDigest } from "@/components/WeeklyDigest";
 import { NeedsAttentionPanel } from "@/components/NeedsAttention";
 import { PingComposer, PingResponseThread } from "@/components/Pings";
 import type { StatusItem, Workstream } from "@/lib/types";
+
+// ─── Inline Post Update ───────────────────────────────────────────────────────
+function InlinePostUpdate({ onPost }: { onPost: (text: string) => void }) {
+  const [text, setText] = useState("");
+
+  const handlePost = () => {
+    if (text.trim()) {
+      onPost(text.trim());
+      setText("");
+    }
+  };
+
+  return (
+    <div style={{ marginBottom: 16, padding: "10px 12px", background: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: 4 }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: "#6B7280", marginBottom: 6 }}>POST UPDATE</div>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="Status update text…"
+        rows={2}
+        style={{ width: "100%", padding: "6px 8px", border: "1px solid #E5E7EB", borderRadius: 3, fontSize: 13, color: "#18181B", resize: "vertical", outline: "none", lineHeight: 1.55 }}
+      />
+      <div style={{ marginTop: 6, display: "flex", justifyContent: "flex-end" }}>
+        <button
+          onClick={handlePost}
+          disabled={!text.trim()}
+          style={{ padding: "4px 12px", background: text.trim() ? "#18181B" : "#E5E7EB", color: text.trim() ? "#FFF" : "#9CA3AF", border: "none", borderRadius: 3, fontSize: 12, fontWeight: 500, cursor: text.trim() ? "pointer" : "not-allowed" }}
+        >
+          Post
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Inline Blocker Editor ────────────────────────────────────────────────────
+function InlineBlockerEditor({ blocker, onSave }: { blocker?: string; onSave: (blocker: string | undefined) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(blocker || "");
+
+  if (!blocker && !editing) {
+    return (
+      <button
+        onClick={() => setEditing(true)}
+        style={{ fontSize: 12, color: "#9CA3AF", background: "transparent", border: "none", padding: "4px 0", marginBottom: 8, cursor: "pointer", textDecoration: "underline" }}
+      >
+        + Add blocker
+      </button>
+    );
+  }
+
+  if (editing) {
+    return (
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: "#DC2626", marginBottom: 4 }}>BLOCKER</div>
+        <input
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onBlur={() => {
+            if (value.trim()) {
+              onSave(value.trim());
+            } else {
+              onSave(undefined);
+            }
+            setEditing(false);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              if (value.trim()) {
+                onSave(value.trim());
+              } else {
+                onSave(undefined);
+              }
+              setEditing(false);
+            } else if (e.key === "Escape") {
+              setValue(blocker || "");
+              setEditing(false);
+            }
+          }}
+          autoFocus
+          placeholder="Describe the blocker…"
+          style={{ width: "100%", padding: "6px 8px", border: "1px solid #FCA5A5", borderRadius: 3, fontSize: 13, color: "#18181B", outline: "none" }}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 12 }}>
+      <BlockerBadge text={blocker!} />
+      <button
+        onClick={() => setEditing(true)}
+        style={{ fontSize: 11, color: "#9CA3AF", background: "transparent", border: "none", padding: 0, cursor: "pointer" }}
+      >
+        ✎
+      </button>
+      <button
+        onClick={() => onSave(undefined)}
+        style={{ fontSize: 11, color: "#DC2626", background: "transparent", border: "none", padding: 0, cursor: "pointer" }}
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
 
 // ─── Sub-item (nested) ────────────────────────────────────────────────────────
 function NestedItem({ item }: { item: StatusItem }) {
@@ -36,11 +141,15 @@ function NestedItem({ item }: { item: StatusItem }) {
 }
 
 // ─── Status item row ──────────────────────────────────────────────────────────
-function StatusItemRow({ item, slug }: { item: StatusItem; slug: string }) {
+function StatusItemRow({ item, slug, wsId, isConsultant }: { item: StatusItem; slug: string; wsId: string; isConsultant: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const [tab, setTab] = useState<"history" | "comments">("history");
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [editingStatus, setEditingStatus] = useState(false);
+  const [titleValue, setTitleValue] = useState(item.title);
+  const [statusValue, setStatusValue] = useState(item.latestStatus);
 
-  const { addComment, addReply, changeItemState } = useStore();
+  const { addComment, addReply, changeItemState, updateItemTitle, updateItemStatus, updateItemBlocker, postUpdate } = useStore();
   const nComments = totalComments(item);
   const unread = isUnread(item);
 
@@ -57,11 +166,77 @@ function StatusItemRow({ item, slug }: { item: StatusItem; slug: string }) {
 
         <div style={{ flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 3 }}>
-            <span style={{ fontSize: 13.5, fontWeight: 600, color: "#18181B" }}>{item.title}</span>
+            {editingTitle && isConsultant ? (
+              <input
+                value={titleValue}
+                onChange={(e) => setTitleValue(e.target.value)}
+                onBlur={() => {
+                  if (titleValue.trim() && titleValue !== item.title) {
+                    updateItemTitle(slug, item.id, titleValue.trim());
+                  } else {
+                    setTitleValue(item.title);
+                  }
+                  setEditingTitle(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    if (titleValue.trim() && titleValue !== item.title) {
+                      updateItemTitle(slug, item.id, titleValue.trim());
+                    }
+                    setEditingTitle(false);
+                  } else if (e.key === "Escape") {
+                    setTitleValue(item.title);
+                    setEditingTitle(false);
+                  }
+                }}
+                autoFocus
+                style={{ fontSize: 13.5, fontWeight: 600, color: "#18181B", border: "1px solid #E5E7EB", borderRadius: 3, padding: "2px 6px", outline: "none", minWidth: 200 }}
+                onClick={(e) => e.stopPropagation()}
+              />
+            ) : (
+              <span
+                style={{ fontSize: 13.5, fontWeight: 600, color: "#18181B", cursor: isConsultant ? "pointer" : "default", position: "relative" }}
+                onClick={(e) => {
+                  if (isConsultant) {
+                    e.stopPropagation();
+                    setEditingTitle(true);
+                  }
+                }}
+                onMouseEnter={(e) => {
+                  if (isConsultant && !editingTitle) {
+                    (e.currentTarget as HTMLElement).style.background = "#F9FAFB";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (isConsultant) {
+                    (e.currentTarget as HTMLElement).style.background = "transparent";
+                  }
+                }}
+              >
+                {item.title}
+                {isConsultant && (
+                  <span style={{ marginLeft: 4, fontSize: 10, color: "#9CA3AF", opacity: 0 }} className="edit-icon">✎</span>
+                )}
+              </span>
+            )}
             <QuickStatusPill
               state={item.state}
               onChangeState={(s) => changeItemState(slug, item.id, s)}
             />
+            {isConsultant && item.state !== "done" && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  changeItemState(slug, item.id, "done");
+                }}
+                style={{ fontSize: 11, fontWeight: 500, color: "#059669", background: "transparent", border: "none", padding: "2px 6px", borderRadius: 3, cursor: "pointer", opacity: 0 }}
+                className="mark-done-btn"
+                onMouseEnter={(e) => (e.currentTarget.style.background = "#ECFDF5")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+              >
+                ✓ Mark done
+              </button>
+            )}
             {item.blocker && (
               <span style={{ fontSize: 11, fontWeight: 600, color: "#DC2626", background: "#FEE2E2", padding: "1px 6px", borderRadius: 3 }}>
                 Blocked
@@ -73,7 +248,59 @@ function StatusItemRow({ item, slug }: { item: StatusItem; slug: string }) {
               </span>
             )}
           </div>
-          <div style={{ fontSize: 13, color: "#52525B", lineHeight: 1.55 }}>{item.latestStatus}</div>
+          {editingStatus && isConsultant ? (
+            <input
+              value={statusValue}
+              onChange={(e) => setStatusValue(e.target.value)}
+              onBlur={() => {
+                if (statusValue.trim() && statusValue !== item.latestStatus) {
+                  updateItemStatus(slug, item.id, statusValue.trim());
+                } else {
+                  setStatusValue(item.latestStatus);
+                }
+                setEditingStatus(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  if (statusValue.trim() && statusValue !== item.latestStatus) {
+                    updateItemStatus(slug, item.id, statusValue.trim());
+                  }
+                  setEditingStatus(false);
+                } else if (e.key === "Escape") {
+                  setStatusValue(item.latestStatus);
+                  setEditingStatus(false);
+                }
+              }}
+              autoFocus
+              style={{ fontSize: 13, color: "#52525B", lineHeight: 1.55, border: "1px solid #E5E7EB", borderRadius: 3, padding: "2px 6px", outline: "none", width: "100%" }}
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <div
+              style={{ fontSize: 13, color: "#52525B", lineHeight: 1.55, cursor: isConsultant ? "pointer" : "default" }}
+              onClick={(e) => {
+                if (isConsultant) {
+                  e.stopPropagation();
+                  setEditingStatus(true);
+                }
+              }}
+              onMouseEnter={(e) => {
+                if (isConsultant && !editingStatus) {
+                  (e.currentTarget as HTMLElement).style.background = "#F9FAFB";
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (isConsultant) {
+                  (e.currentTarget as HTMLElement).style.background = "transparent";
+                }
+              }}
+            >
+              {item.latestStatus}
+              {isConsultant && (
+                <span style={{ marginLeft: 4, fontSize: 10, color: "#9CA3AF", opacity: 0 }} className="edit-icon">✎</span>
+              )}
+            </div>
+          )}
 
           {/* Sub-item pills on collapsed row */}
           {!expanded && item.children?.length > 0 && (
@@ -104,7 +331,15 @@ function StatusItemRow({ item, slug }: { item: StatusItem; slug: string }) {
 
       {expanded && (
         <div className="sd" style={{ borderTop: "1px solid #F3F4F6", padding: "12px 14px 16px 36px" }}>
-          {item.blocker && <BlockerBadge text={item.blocker} />}
+          {/* Blocker management */}
+          {isConsultant ? (
+            <InlineBlockerEditor
+              blocker={item.blocker}
+              onSave={(blocker) => updateItemBlocker(slug, item.id, blocker)}
+            />
+          ) : (
+            item.blocker && <BlockerBadge text={item.blocker} />
+          )}
 
           {item.children?.length > 0 && (
             <div style={{ margin: "10px 0 4px" }}>
@@ -121,7 +356,16 @@ function StatusItemRow({ item, slug }: { item: StatusItem; slug: string }) {
             ))}
           </div>
 
-          {tab === "history" && <WeeklyHistoryPanel updates={item.updates} />}
+          {tab === "history" && (
+            <>
+              {isConsultant && (
+                <InlinePostUpdate
+                  onPost={(text) => postUpdate(slug, wsId, item.id, text)}
+                />
+              )}
+              <WeeklyHistoryPanel updates={item.updates} />
+            </>
+          )}
           {tab === "comments" && (
             <CommentThread
               comments={item.comments}
@@ -136,7 +380,7 @@ function StatusItemRow({ item, slug }: { item: StatusItem; slug: string }) {
 }
 
 // ─── Workstream section ───────────────────────────────────────────────────────
-function WorkstreamSection({ ws, slug }: { ws: Workstream; slug: string }) {
+function WorkstreamSection({ ws, slug, isConsultant }: { ws: Workstream; slug: string; isConsultant: boolean }) {
   const [collapsed, setCollapsed] = useState(false);
   const counts = countByState(ws.items);
 
@@ -154,7 +398,7 @@ function WorkstreamSection({ ws, slug }: { ws: Workstream; slug: string }) {
       </button>
       {!collapsed && (
         <div className="sd">
-          {ws.items.map((item) => <StatusItemRow key={item.id} item={item} slug={slug} />)}
+          {ws.items.map((item) => <StatusItemRow key={item.id} item={item} slug={slug} wsId={ws.id} isConsultant={isConsultant} />)}
         </div>
       )}
     </div>
@@ -199,8 +443,10 @@ function StatusSummaryBar({ slug }: { slug: string }) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function ClientPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
+  const searchParams = useSearchParams();
   const [showDigest, setShowDigest] = useState(false);
 
+  const isConsultant = searchParams.get("view") === "consultant";
   const client     = useStore((s) => s.clients.find((c) => c.slug === slug));
   const sendPing   = useStore((s) => s.sendPing);
   const changeItem = useStore((s) => s.changeItemState);
@@ -211,6 +457,14 @@ export default function ClientPage({ params }: { params: Promise<{ slug: string 
 
   return (
     <>
+      <style jsx global>{`
+        .sd:hover .edit-icon {
+          opacity: 1 !important;
+        }
+        .sd:hover .mark-done-btn {
+          opacity: 1 !important;
+        }
+      `}</style>
       <NavBar />
       {showDigest && <WeeklyDigest client={client} onClose={() => setShowDigest(false)} />}
 
@@ -257,7 +511,7 @@ export default function ClientPage({ params }: { params: Promise<{ slug: string 
         <Divider margin="0 0 22px" />
 
         {client.workstreams.map((ws) => (
-          <WorkstreamSection key={ws.id} ws={ws} slug={slug} />
+          <WorkstreamSection key={ws.id} ws={ws} slug={slug} isConsultant={isConsultant} />
         ))}
 
         <Divider margin="8px 0 0" />
