@@ -259,34 +259,122 @@ export const useStore = create<Store>()((set, get) => ({
     }).catch(err => console.error("Error posting update:", err));
   },
 
-  addWorkstream: (slug, title) =>
+  addWorkstream: async (slug, title) => {
+    // Optimistic update
+    const tempId = `ws-temp-${Date.now()}`;
     set(s => ({
       clients: s.clients.map(c =>
         c.slug !== slug ? c : {
           ...c,
-          workstreams: [...c.workstreams, { id: `ws-${Date.now()}`, title, state: "not_started", items: [] }],
+          workstreams: [...(c.workstreams || []), { id: tempId, title, state: "not_started" as const, items: [] }],
         }
       ),
-    })),
+    }));
 
-  addItem: (slug, wsId, item) =>
+    // API call
+    try {
+      const response = await fetch(`/api/clients/${slug}/workstreams`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      });
+
+      if (response.ok) {
+        const newWorkstream = await response.json();
+        // Replace temp ID with real ID
+        set(s => ({
+          clients: s.clients.map(c =>
+            c.slug !== slug ? c : {
+              ...c,
+              workstreams: c.workstreams.map(ws =>
+                ws.id === tempId ? newWorkstream : ws
+              ),
+            }
+          ),
+        }));
+      }
+    } catch (err) {
+      console.error("Error creating workstream:", err);
+      // Rollback on error
+      set(s => ({
+        clients: s.clients.map(c =>
+          c.slug !== slug ? c : {
+            ...c,
+            workstreams: c.workstreams.filter(ws => ws.id !== tempId),
+          }
+        ),
+      }));
+    }
+  },
+
+  addItem: async (slug, wsId, item) => {
+    // Optimistic update
+    const tempId = `it-temp-${Date.now()}`;
+    const now = new Date().toISOString();
     set(s => ({
       clients: s.clients.map(c =>
         c.slug !== slug ? c : {
           ...c,
-          workstreams: c.workstreams.map(ws =>
+          workstreams: (c.workstreams || []).map(ws =>
             ws.id !== wsId ? ws : {
               ...ws,
-              items: [...ws.items, {
+              items: [...(ws.items || []), {
                 ...item,
-                id: `it-${Date.now()}`,
+                id: tempId,
+                updatedAt: now,
                 updates: [], comments: [], children: [],
               }],
             }
           ),
         }
       ),
-    })),
+    }));
+
+    // API call
+    try {
+      const response = await fetch(`/api/clients/${slug}/workstreams/${wsId}/items`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(item),
+      });
+
+      if (response.ok) {
+        const newItem = await response.json();
+        // Replace temp ID with real ID
+        set(s => ({
+          clients: s.clients.map(c =>
+            c.slug !== slug ? c : {
+              ...c,
+              workstreams: c.workstreams.map(ws =>
+                ws.id !== wsId ? ws : {
+                  ...ws,
+                  items: ws.items.map(it =>
+                    it.id === tempId ? newItem : it
+                  ),
+                }
+              ),
+            }
+          ),
+        }));
+      }
+    } catch (err) {
+      console.error("Error creating item:", err);
+      // Rollback on error
+      set(s => ({
+        clients: s.clients.map(c =>
+          c.slug !== slug ? c : {
+            ...c,
+            workstreams: c.workstreams.map(ws =>
+              ws.id !== wsId ? ws : {
+                ...ws,
+                items: ws.items.filter(it => it.id !== tempId),
+              }
+            ),
+          }
+        ),
+      }));
+    }
+  },
 
   sendPing: (slug, author, text) => {
     // Optimistic update
