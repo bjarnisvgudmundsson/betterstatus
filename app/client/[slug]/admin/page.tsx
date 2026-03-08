@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, use } from "react";
+import { useState, use, useEffect } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { useStore } from "@/lib/store";
@@ -24,6 +24,8 @@ function AS({ title, children }: { title: React.ReactNode; children: React.React
 export default function AdminPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   const client = useStore((s) => s.clients.find((c) => c.slug === slug));
+  const loading = useStore((s) => s.loading);
+  const loadClient = useStore((s) => s.loadClient);
   const { addWorkstream, addItem, postUpdate, acknowledgePing, respondPing } = useStore();
 
   const [newWs, setNewWs]     = useState("");
@@ -31,12 +33,29 @@ export default function AdminPage({ params }: { params: Promise<{ slug: string }
   const [newUpd, setNewUpd]   = useState({ wsId: "", itemId: "", text: "" });
   const [toast, setToast]     = useState("");
 
+  useEffect(() => {
+    if (!client) {
+      loadClient(slug);
+    }
+  }, [slug, client, loadClient]);
+
+  if (loading && !client) {
+    return (
+      <>
+        <NavBar />
+        <div style={{ maxWidth: 820, margin: "0 auto", padding: "32px 24px 80px", textAlign: "center", color: "#6B7280" }}>
+          Loading...
+        </div>
+      </>
+    );
+  }
+
   if (!client) return notFound();
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(""), 2500); };
 
-  const wsItems = newUpd.wsId ? (client.workstreams.find((w) => w.id === newUpd.wsId)?.items || []) : [];
-  const unread  = client.pings.filter((p) => p.status === "unread").length;
+  const wsItems = newUpd.wsId ? ((client.workstreams || []).find((w) => w.id === newUpd.wsId)?.items || []) : [];
+  const unread  = (client.pings || []).filter((p) => p.status === "unread").length;
 
   return (
     <>
@@ -68,8 +87,8 @@ export default function AdminPage({ params }: { params: Promise<{ slug: string }
             {unread > 0 && <span style={{ background: "#DC2626", color: "#FFF", fontSize: 10, fontWeight: 700, borderRadius: 10, padding: "1px 7px" }}>{unread} new</span>}
           </span>
         }>
-          {!client.pings.length && <div style={{ fontSize: 12, color: "#9CA3AF" }}>No messages yet.</div>}
-          {client.pings.map((pg) => (
+          {!(client.pings || []).length && <div style={{ fontSize: 12, color: "#9CA3AF" }}>No messages yet.</div>}
+          {(client.pings || []).map((pg) => (
             <PingCard
               key={pg.id}
               ping={pg}
@@ -93,7 +112,7 @@ export default function AdminPage({ params }: { params: Promise<{ slug: string }
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <select value={newItem.wsId} onChange={(e) => setNewItem((i) => ({ ...i, wsId: e.target.value }))} style={IN}>
               <option value="">Select workstream…</option>
-              {client.workstreams.map((ws) => <option key={ws.id} value={ws.id}>{ws.title}</option>)}
+              {(client.workstreams || []).map((ws) => <option key={ws.id} value={ws.id}>{ws.title}</option>)}
             </select>
             <input value={newItem.title}  onChange={(e) => setNewItem((i) => ({ ...i, title: e.target.value }))}  placeholder="Item title…"      style={IN} />
             <input value={newItem.status} onChange={(e) => setNewItem((i) => ({ ...i, status: e.target.value }))} placeholder="One-line status…"  style={IN} />
@@ -132,7 +151,7 @@ export default function AdminPage({ params }: { params: Promise<{ slug: string }
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <select value={newUpd.wsId} onChange={(e) => setNewUpd((u) => ({ ...u, wsId: e.target.value, itemId: "" }))} style={IN}>
               <option value="">Select workstream…</option>
-              {client.workstreams.map((ws) => <option key={ws.id} value={ws.id}>{ws.title}</option>)}
+              {(client.workstreams || []).map((ws) => <option key={ws.id} value={ws.id}>{ws.title}</option>)}
             </select>
             <select value={newUpd.itemId} onChange={(e) => setNewUpd((u) => ({ ...u, itemId: e.target.value }))} style={IN} disabled={!newUpd.wsId}>
               <option value="">Select item…</option>
@@ -150,7 +169,7 @@ export default function AdminPage({ params }: { params: Promise<{ slug: string }
 
         {/* OVERVIEW */}
         <AS title="Workstream Overview">
-          {client.workstreams.map((ws) => (
+          {(client.workstreams || []).map((ws) => (
             <div key={ws.id} style={{ marginBottom: 12 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
                 <StatusDot state={ws.state} />
