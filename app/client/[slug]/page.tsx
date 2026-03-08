@@ -606,8 +606,8 @@ function SimpleClientView({ client, slug }: { client: import("@/lib/types").Clie
 
   // Flatten all items from all workstreams
   const allItems: Array<StatusItem & { wsId: string }> = [];
-  for (const ws of client.workstreams) {
-    for (const item of ws.items) {
+  for (const ws of (client.workstreams || [])) {
+    for (const item of (ws.items || [])) {
       allItems.push({ ...item, wsId: ws.id });
     }
   }
@@ -633,7 +633,7 @@ function SimpleClientView({ client, slug }: { client: import("@/lib/types").Clie
         ))}
 
         <Divider margin="16px 0 0" />
-        <PingResponseThread pings={client.pings} />
+        <PingResponseThread pings={client.pings || []} />
         <PingComposer onSend={(text) => sendPing(slug, "Bjarni", text)} />
       </div>
     </>
@@ -645,7 +645,7 @@ function ConsultantView({ client, slug }: { client: import("@/lib/types").Client
   const [showDigest, setShowDigest] = useState(false);
   const sendPing = useStore((s) => s.sendPing);
   const changeItem = useStore((s) => s.changeItemState);
-  const unreadPings = client.pings.filter((p) => p.status === "unread").length;
+  const unreadPings = (client.pings || []).filter((p) => p.status === "unread").length;
 
   return (
     <>
@@ -689,13 +689,13 @@ function ConsultantView({ client, slug }: { client: import("@/lib/types").Client
 
         <StatusSummaryBar slug={slug} />
         <NeedsAttentionPanel
-          workstreams={client.workstreams}
+          workstreams={client.workstreams || []}
           onChangeState={(itemId, state) => changeItem(slug, itemId, state)}
         />
         <Divider margin="0 0 22px" />
 
         {/* Workstreams with 3-row cards */}
-        {client.workstreams.map((ws) => (
+        {(client.workstreams || []).map((ws) => (
           <div key={ws.id} style={{ marginBottom: 24 }}>
             {/* Subtle workstream label */}
             <div style={{ fontSize: 12, fontWeight: 600, color: "#9CA3AF", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>
@@ -708,7 +708,7 @@ function ConsultantView({ client, slug }: { client: import("@/lib/types").Client
         ))}
 
         <Divider margin="8px 0 0" />
-        <PingResponseThread pings={client.pings} />
+        <PingResponseThread pings={client.pings || []} />
         <PingComposer onSend={(text) => sendPing(slug, "Bjarni", text)} />
       </div>
     </>
