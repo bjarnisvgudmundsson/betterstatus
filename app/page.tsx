@@ -107,7 +107,18 @@ export default function HomePage() {
           <input value={newClient.name} onChange={(e) => setNewClient({ ...newClient, name: e.target.value })} placeholder="Name..." style={{ ...IN, marginBottom: 8 }} />
           <input value={newClient.sector} onChange={(e) => setNewClient({ ...newClient, sector: e.target.value })} placeholder="Sector..." style={{ ...IN, marginBottom: 8 }} />
           <input value={newClient.pageTitle} onChange={(e) => setNewClient({ ...newClient, pageTitle: e.target.value })} placeholder="Page title..." style={{ ...IN, marginBottom: 8 }} />
-          <button onClick={() => { createClient(newClient); setNewClient({ slug: "", name: "", sector: "", pageTitle: "" }); setShowNewClient(false); }} style={{ fontSize: 13, padding: "8px 16px", background: "#18181B", color: "#FFF", border: "none", borderRadius: 4, cursor: "pointer" }}>Create Client</button>
+          <button onClick={() => {
+            if (!newClient.slug || !newClient.name) {
+              alert("Slug and name are required");
+              return;
+            }
+            createClient(newClient).then(() => {
+              alert(`Client "${newClient.name}" created! Now create a deliverable for this client.`);
+              setNewClient({ slug: "", name: "", sector: "", pageTitle: "" });
+              setShowNewClient(false);
+              setShowNewDeliv(true);
+            });
+          }} style={{ fontSize: 13, padding: "8px 16px", background: "#18181B", color: "#FFF", border: "none", borderRadius: 4, cursor: "pointer" }}>Create Client</button>
         </div>
       )}
       {grouped.map((group) => (
