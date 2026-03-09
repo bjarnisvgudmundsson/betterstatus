@@ -1,30 +1,26 @@
 import { create } from "zustand";
-import type { Client, StatusState } from "./types";
+import type { Client, Deliverable, Ping } from "./types";
 
 interface Store {
   clients: Client[];
+  deliverables: Deliverable[];
   loading: boolean;
 
   // Data loading
-  loadClients: () => Promise<void>;
+  loadAllDeliverables: () => Promise<void>;
   loadClient: (slug: string) => Promise<void>;
 
   // Client mutations
-  updateClient: (slug: string, fn: (c: Client) => Client) => void;
+  createClient: (data: { slug: string; name: string; sector?: string; pageTitle?: string; purchaserMode?: string }) => Promise<void>;
+  updateClient: (slug: string, fields: Partial<Client>) => void;
 
-  // Item mutations
-  changeItemState: (slug: string, itemId: string, state: StatusState) => void;
-  updateItemTitle: (slug: string, itemId: string, title: string) => void;
-  updateItemStatus: (slug: string, itemId: string, status: string) => void;
-  updateItemBlocker: (slug: string, itemId: string, blocker: string | undefined) => void;
-  updateItemNextSteps: (slug: string, itemId: string, nextSteps: string | undefined) => void;
-  addComment: (slug: string, itemId: string, text: string) => void;
-  addReply: (slug: string, itemId: string, commentId: string, text: string) => void;
-  postUpdate: (slug: string, wsId: string, itemId: string, text: string) => void;
-
-  // Workstream mutations
-  addWorkstream: (slug: string, title: string) => void;
-  addItem: (slug: string, wsId: string, item: Omit<import("./types").StatusItem, "id" | "updates" | "comments" | "children">) => void;
+  // Deliverable mutations
+  createDeliverable: (data: { clientId: string; title: string; description: string; state: string; nextSteps?: string }) => Promise<void>;
+  updateDeliverable: (id: string, fields: any) => void;
+  deleteDeliverable: (id: string) => void;
+  postUpdate: (id: string, text: string) => void;
+  addComment: (id: string, author: string, authorRole: string, text: string) => void;
+  addReply: (id: string, commentId: string, author: string, authorRole: string, text: string) => void;
 
   // Ping mutations
   sendPing: (slug: string, author: string, text: string) => void;
@@ -32,36 +28,20 @@ interface Store {
   respondPing: (slug: string, pingId: string, response: string) => void;
 }
 
-function mapItem(
-  clients: Client[],
-  slug: string,
-  itemId: string,
-  fn: (item: import("./types").StatusItem) => import("./types").StatusItem
-): Client[] {
-  return clients.map(c =>
-    c.slug !== slug ? c : {
-      ...c,
-      workstreams: c.workstreams.map(ws => ({
-        ...ws,
-        items: ws.items.map(it => it.id === itemId ? fn(it) : it),
-      })),
-    }
-  );
-}
-
 export const useStore = create<Store>()((set, get) => ({
   clients: [],
+  deliverables: [],
   loading: false,
 
-  loadClients: async () => {
+  loadAllDeliverables: async () => {
     set({ loading: true });
     try {
-      const response = await fetch("/api/clients");
-      if (!response.ok) throw new Error("Failed to fetch clients");
-      const clients = await response.json();
-      set({ clients, loading: false });
+      const response = await fetch("/api/deliverables");
+      if (!response.ok) throw new Error("Failed to fetch deliverables");
+      const deliverables = await response.json();
+      set({ deliverables, loading: false });
     } catch (error) {
-      console.error("Error loading clients:", error);
+      console.error("Error loading deliverables:", error);
       set({ loading: false });
     }
   },
@@ -73,7 +53,6 @@ export const useStore = create<Store>()((set, get) => ({
       if (!response.ok) throw new Error("Failed to fetch client");
       const client = await response.json();
 
-      // Replace or add client in array
       set(state => ({
         clients: state.clients.some(c => c.slug === slug)
           ? state.clients.map(c => c.slug === slug ? client : c)
@@ -86,243 +65,133 @@ export const useStore = create<Store>()((set, get) => ({
     }
   },
 
-  updateClient: (slug, fn) =>
-    set(s => ({ clients: s.clients.map(c => c.slug === slug ? fn(c) : c) })),
-
-  changeItemState: (slug, itemId, state) => {
-    // Optimistic update
-    set(s => ({ clients: mapItem(s.clients, slug, itemId, it => ({ ...it, state, updatedAt: new Date().toISOString() })) }));
-
-    // API call
-    fetch(`/api/clients/${slug}/items/${itemId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ state }),
-    }).catch(err => console.error("Error updating item state:", err));
+  createClient: async (data) => {
+    try {
+      const response = await fetch("/api/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (response.ok) {
+        get().loadAllDeliverables();
+      }
+    } catch (error) {
+      console.error("Error creating client:", error);
+    }
   },
 
-  updateItemTitle: (slug, itemId, title) => {
-    // Optimistic update
-    set(s => ({ clients: mapItem(s.clients, slug, itemId, it => ({ ...it, title, updatedAt: new Date().toISOString() })) }));
+  updateClient: (slug, fields) => {
+    set(s => ({
+      clients: s.clients.map(c => c.slug === slug ? { ...c, ...fields } : c),
+    }));
 
-    // API call
-    fetch(`/api/clients/${slug}/items/${itemId}`, {
+    fetch(`/api/clients/${slug}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title }),
-    }).catch(err => console.error("Error updating item title:", err));
+      body: JSON.stringify(fields),
+    }).catch(err => console.error("Error updating client:", err));
   },
 
-  updateItemStatus: (slug, itemId, status) => {
+  createDeliverable: async (data) => {
+    try {
+      const response = await fetch("/api/deliverables", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (response.ok) {
+        get().loadAllDeliverables();
+      }
+    } catch (error) {
+      console.error("Error creating deliverable:", error);
+    }
+  },
+
+  updateDeliverable: (id, fields) => {
+    set(s => ({
+      deliverables: s.deliverables.map(d => d.id === id ? { ...d, ...fields, updatedAt: new Date().toISOString() } : d),
+    }));
+
+    fetch(`/api/deliverables/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(fields),
+    }).catch(err => console.error("Error updating deliverable:", err));
+  },
+
+  deleteDeliverable: (id) => {
+    set(s => ({
+      deliverables: s.deliverables.filter(d => d.id !== id),
+    }));
+
+    fetch(`/api/deliverables/${id}`, {
+      method: "DELETE",
+    }).catch(err => console.error("Error deleting deliverable:", err));
+  },
+
+  postUpdate: (id, text) => {
     const now = new Date().toISOString();
     const weekLabel = "Week of " + new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 
-    // Optimistic update
     set(s => ({
-      clients: mapItem(s.clients, slug, itemId, it => ({
-        ...it,
-        latestStatus: status,
-        updatedAt: now,
-        updates: [{ id: `u-${Date.now()}`, text: status, weekLabel, timestamp: now }, ...it.updates],
-      }))
-    }));
-
-    // API call
-    fetch(`/api/clients/${slug}/items/${itemId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ latestStatus: status }),
-    }).catch(err => console.error("Error updating item status:", err));
-  },
-
-  updateItemBlocker: (slug, itemId, blocker) => {
-    // Optimistic update
-    set(s => ({
-      clients: mapItem(s.clients, slug, itemId, it => ({
-        ...it,
-        blocker,
-        state: blocker ? "blocked" : it.state,
-        updatedAt: new Date().toISOString()
-      }))
-    }));
-
-    // API call
-    fetch(`/api/clients/${slug}/items/${itemId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ blocker: blocker || null }),
-    }).catch(err => console.error("Error updating item blocker:", err));
-  },
-
-  updateItemNextSteps: (slug, itemId, nextSteps) => {
-    // Optimistic update
-    set(s => ({
-      clients: mapItem(s.clients, slug, itemId, it => ({
-        ...it,
-        nextSteps,
-        updatedAt: new Date().toISOString()
-      }))
-    }));
-
-    // API call
-    fetch(`/api/clients/${slug}/items/${itemId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nextSteps: nextSteps || null }),
-    }).catch(err => console.error("Error updating item next steps:", err));
-  },
-
-  addComment: (slug, itemId, text) => {
-    // Optimistic update
-    set(s => ({
-      clients: mapItem(s.clients, slug, itemId, it => ({
-        ...it,
-        comments: [...it.comments, {
-          id: `c-${Date.now()}`,
-          author: "Bjarni G.", authorRole: "Consultant",
-          text, timestamp: new Date().toISOString(), replies: [],
-        }],
-      })),
-    }));
-
-    // API call
-    fetch(`/api/clients/${slug}/items/${itemId}/comments`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ author: "Bjarni G.", authorRole: "Consultant", text }),
-    }).catch(err => console.error("Error adding comment:", err));
-  },
-
-  addReply: (slug, itemId, commentId, text) => {
-    // Optimistic update
-    set(s => ({
-      clients: mapItem(s.clients, slug, itemId, it => ({
-        ...it,
-        comments: it.comments.map(c =>
-          c.id !== commentId ? c : {
-            ...c,
-            replies: [...(c.replies || []), {
-              id: `r-${Date.now()}`,
-              author: "Bjarni G.", authorRole: "Consultant",
-              text, timestamp: new Date().toISOString(),
-            }],
-          }
-        ),
-      })),
-    }));
-
-    // API call
-    fetch(`/api/clients/${slug}/items/${itemId}/comments`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        author: "Bjarni G.",
-        authorRole: "Consultant",
-        text,
-        parentId: commentId
-      }),
-    }).catch(err => console.error("Error adding reply:", err));
-  },
-
-  postUpdate: (slug, wsId, itemId, text) => {
-    const now = new Date().toISOString();
-    const weekLabel = "Week of " + new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short" });
-
-    // Optimistic update
-    set(s => ({
-      clients: s.clients.map(c =>
-        c.slug !== slug ? c : {
-          ...c,
-          lastUpdated: now,
-          workstreams: c.workstreams.map(ws =>
-            ws.id !== wsId ? ws : {
-              ...ws,
-              items: ws.items.map(it =>
-                it.id !== itemId ? it : {
-                  ...it,
-                  latestStatus: text,
-                  updatedAt: now,
-                  updates: [{ id: `u-${Date.now()}`, text, weekLabel, timestamp: now }, ...it.updates],
-                }
-              ),
-            }
-          ),
+      deliverables: s.deliverables.map(d =>
+        d.id !== id ? d : {
+          ...d,
+          updatedAt: now,
+          updates: [{ id: `u-${Date.now()}`, text, weekLabel, timestamp: now }, ...d.updates],
         }
       ),
     }));
 
-    // API call
-    fetch(`/api/clients/${slug}/items/${itemId}/updates`, {
+    fetch(`/api/deliverables/${id}/updates`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text }),
     }).catch(err => console.error("Error posting update:", err));
   },
 
-  addWorkstream: async (slug, title) => {
-    // Optimistic update
-    const tempId = `ws-temp-${Date.now()}`;
+  addComment: (id, author, authorRole, text) => {
+    const now = new Date().toISOString();
+
     set(s => ({
-      clients: s.clients.map(c =>
-        c.slug !== slug ? c : {
-          ...c,
-          workstreams: [...(c.workstreams || []), { id: tempId, title, state: "not_started" as const, items: [] }],
+      deliverables: s.deliverables.map(d =>
+        d.id !== id ? d : {
+          ...d,
+          comments: [...d.comments, {
+            id: `c-${Date.now()}`,
+            author,
+            authorRole,
+            text,
+            timestamp: now,
+            replies: [],
+          }],
         }
       ),
     }));
 
-    // API call
-    try {
-      const response = await fetch(`/api/clients/${slug}/workstreams`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title }),
-      });
-
-      if (response.ok) {
-        const newWorkstream = await response.json();
-        // Replace temp ID with real ID
-        set(s => ({
-          clients: s.clients.map(c =>
-            c.slug !== slug ? c : {
-              ...c,
-              workstreams: c.workstreams.map(ws =>
-                ws.id === tempId ? newWorkstream : ws
-              ),
-            }
-          ),
-        }));
-      }
-    } catch (err) {
-      console.error("Error creating workstream:", err);
-      // Rollback on error
-      set(s => ({
-        clients: s.clients.map(c =>
-          c.slug !== slug ? c : {
-            ...c,
-            workstreams: c.workstreams.filter(ws => ws.id !== tempId),
-          }
-        ),
-      }));
-    }
+    fetch(`/api/deliverables/${id}/comments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ author, authorRole, text }),
+    }).catch(err => console.error("Error adding comment:", err));
   },
 
-  addItem: async (slug, wsId, item) => {
-    // Optimistic update
-    const tempId = `it-temp-${Date.now()}`;
+  addReply: (id, commentId, author, authorRole, text) => {
     const now = new Date().toISOString();
+
     set(s => ({
-      clients: s.clients.map(c =>
-        c.slug !== slug ? c : {
-          ...c,
-          workstreams: (c.workstreams || []).map(ws =>
-            ws.id !== wsId ? ws : {
-              ...ws,
-              items: [...(ws.items || []), {
-                ...item,
-                id: tempId,
-                updatedAt: now,
-                updates: [], comments: [], children: [],
+      deliverables: s.deliverables.map(d =>
+        d.id !== id ? d : {
+          ...d,
+          comments: d.comments.map(c =>
+            c.id !== commentId ? c : {
+              ...c,
+              replies: [...c.replies, {
+                id: `r-${Date.now()}`,
+                author,
+                authorRole,
+                text,
+                timestamp: now,
               }],
             }
           ),
@@ -330,69 +199,31 @@ export const useStore = create<Store>()((set, get) => ({
       ),
     }));
 
-    // API call
-    try {
-      const response = await fetch(`/api/clients/${slug}/workstreams/${wsId}/items`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(item),
-      });
-
-      if (response.ok) {
-        const newItem = await response.json();
-        // Replace temp ID with real ID
-        set(s => ({
-          clients: s.clients.map(c =>
-            c.slug !== slug ? c : {
-              ...c,
-              workstreams: c.workstreams.map(ws =>
-                ws.id !== wsId ? ws : {
-                  ...ws,
-                  items: ws.items.map(it =>
-                    it.id === tempId ? newItem : it
-                  ),
-                }
-              ),
-            }
-          ),
-        }));
-      }
-    } catch (err) {
-      console.error("Error creating item:", err);
-      // Rollback on error
-      set(s => ({
-        clients: s.clients.map(c =>
-          c.slug !== slug ? c : {
-            ...c,
-            workstreams: c.workstreams.map(ws =>
-              ws.id !== wsId ? ws : {
-                ...ws,
-                items: ws.items.filter(it => it.id !== tempId),
-              }
-            ),
-          }
-        ),
-      }));
-    }
+    fetch(`/api/deliverables/${id}/comments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ author, authorRole, text, parentId: commentId }),
+    }).catch(err => console.error("Error adding reply:", err));
   },
 
   sendPing: (slug, author, text) => {
-    // Optimistic update
     set(s => ({
       clients: s.clients.map(c =>
         c.slug !== slug ? c : {
           ...c,
           pings: [...c.pings, {
             id: `ping-${Date.now()}`,
-            author, role: "Buyer",
-            text, timestamp: new Date().toISOString(),
-            status: "unread", response: null,
+            author,
+            role: "Buyer",
+            text,
+            timestamp: new Date().toISOString(),
+            status: "unread" as const,
+            response: null,
           }],
         }
       ),
     }));
 
-    // API call
     fetch(`/api/clients/${slug}/pings`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -401,17 +232,15 @@ export const useStore = create<Store>()((set, get) => ({
   },
 
   acknowledgePing: (slug, pingId) => {
-    // Optimistic update
     set(s => ({
       clients: s.clients.map(c =>
         c.slug !== slug ? c : {
           ...c,
-          pings: c.pings.map(p => p.id !== pingId ? p : { ...p, status: "acknowledged" }),
+          pings: c.pings.map(p => p.id !== pingId ? p : { ...p, status: "acknowledged" as const }),
         }
       ),
     }));
 
-    // API call
     fetch(`/api/clients/${slug}/pings/${pingId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -420,17 +249,15 @@ export const useStore = create<Store>()((set, get) => ({
   },
 
   respondPing: (slug, pingId, response) => {
-    // Optimistic update
     set(s => ({
       clients: s.clients.map(c =>
         c.slug !== slug ? c : {
           ...c,
-          pings: c.pings.map(p => p.id !== pingId ? p : { ...p, status: "responded", response }),
+          pings: c.pings.map(p => p.id !== pingId ? p : { ...p, status: "responded" as const, response }),
         }
       ),
     }));
 
-    // API call
     fetch(`/api/clients/${slug}/pings/${pingId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },

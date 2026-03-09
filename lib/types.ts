@@ -30,26 +30,21 @@ export interface Update {
   timestamp: string;
 }
 
-export interface StatusItem {
+export interface Deliverable {
   id: string;
+  clientId: string;
+  clientSlug?: string;
+  clientName?: string;
   title: string;
-  latestStatus: string;
+  description: string;
   state: StatusState;
   blocker?: string;
-  updatedAt: string;
-  seenAt?: string;
   nextSteps?: string;
-  toggl?: TogglLink | null;
+  updatedAt: string;
+  togglProjectId?: string;
+  togglHours7d: number;
   updates: Update[];
   comments: Comment[];
-  children: StatusItem[];
-}
-
-export interface Workstream {
-  id: string;
-  title: string;
-  state: StatusState;
-  items: StatusItem[];
 }
 
 export interface Ping {
@@ -68,11 +63,9 @@ export interface Client {
   name: string;
   sector: string;
   pageTitle: string;
-  overallState: StatusState;
-  lastUpdated: string;
-  summary: string;
   purchaserMode: "direct" | "subcontractor";
   endClientName?: string;
   pings: Ping[];
-  workstreams: Workstream[];
+  deliverables: Deliverable[];
+  unreadPings?: number;
 }
