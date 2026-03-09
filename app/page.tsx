@@ -65,14 +65,22 @@ export default function HomePage() {
   const [showNewClient, setShowNewClient] = useState(false);
   const [newClient, setNewClient] = useState({ slug: "", name: "", sector: "", pageTitle: "" });
   const [filterClient, setFilterClient] = useState<string | null>(null);
+  const [allClients, setAllClients] = useState<Array<{ id: string; slug: string; name: string }>>([]);
 
   useEffect(() => { loadAllDeliverables(); }, [loadAllDeliverables]);
+
+  useEffect(() => {
+    fetch("/api/clients")
+      .then(res => res.json())
+      .then(data => setAllClients(data))
+      .catch(err => console.error("Error loading clients:", err));
+  }, []);
 
   if (loading && deliverables.length === 0) {
     return (<><NavBar /><div style={{ maxWidth: 900, margin: "0 auto", padding: "32px 24px", textAlign: "center", color: "#6B7280" }}>Loading...</div></>);
   }
 
-  const clients = Array.from(new Set(deliverables.map(d => d.clientSlug))).map(slug => ({ slug, name: deliverables.find(d => d.clientSlug === slug)?.clientName || slug }));
+  const clients = Array.from(new Set(deliverables.map(d => d.clientSlug).filter((s): s is string => s !== undefined))).map(slug => ({ slug, name: deliverables.find(d => d.clientSlug === slug)?.clientName || slug }));
   const filtered = filterClient ? deliverables.filter(d => d.clientSlug === filterClient) : deliverables;
   const grouped = clients.map(c => ({ ...c, deliverables: filtered.filter(d => d.clientSlug === c.slug) })).filter(c => c.deliverables.length > 0);
 
@@ -91,7 +99,7 @@ export default function HomePage() {
         <div style={{ background: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: 6, padding: 14, marginBottom: 16 }}>
           <select value={newDeliv.clientId} onChange={(e) => setNewDeliv({ ...newDeliv, clientId: e.target.value })} style={{ ...IN, marginBottom: 8 }}>
             <option value="">Select client...</option>
-            {clients.map(c => <option key={c.slug} value={deliverables.find(d => d.clientSlug === c.slug)?.clientId}>{c.name}</option>)}
+            {allClients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
           <input value={newDeliv.title} onChange={(e) => setNewDeliv({ ...newDeliv, title: e.target.value })} placeholder="Title..." style={{ ...IN, marginBottom: 8 }} />
           <textarea value={newDeliv.description} onChange={(e) => setNewDeliv({ ...newDeliv, description: e.target.value })} placeholder="Description..." rows={2} style={{ ...IN, marginBottom: 8, resize: "vertical" }} />
@@ -113,6 +121,10 @@ export default function HomePage() {
               return;
             }
             createClient(newClient).then(() => {
+              fetch("/api/clients")
+                .then(res => res.json())
+                .then(data => setAllClients(data))
+                .catch(err => console.error("Error loading clients:", err));
               alert(`Client "${newClient.name}" created! Now create a deliverable for this client.`);
               setNewClient({ slug: "", name: "", sector: "", pageTitle: "" });
               setShowNewClient(false);
