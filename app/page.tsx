@@ -59,7 +59,7 @@ function DeliverableCard({ deliverable, onUpdate }: { deliverable: Deliverable; 
 export default function HomePage() {
   const deliverables = useStore((s) => s.deliverables);
   const loading = useStore((s) => s.loading);
-  const { loadAllDeliverables, createDeliverable, createClient } = useStore();
+  const { loadAllDeliverables, createDeliverable, createClient, deleteClient } = useStore();
   const [showNewDeliv, setShowNewDeliv] = useState(false);
   const [newDeliv, setNewDeliv] = useState({ clientId: "", title: "", description: "", state: "not_started" });
   const [showNewClient, setShowNewClient] = useState(false);
@@ -112,7 +112,10 @@ export default function HomePage() {
       )}
       {grouped.map((group) => (
         <div key={group.slug} style={{ marginBottom: 32 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 10 }}>{group.name}</div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", letterSpacing: "0.05em", textTransform: "uppercase" }}>{group.name}</div>
+            <button onClick={() => { if (confirm(`Delete ${group.name} and all its deliverables?`)) deleteClient(group.slug); }} style={{ fontSize: 10, color: "#DC2626", background: "transparent", border: "none", cursor: "pointer", padding: "4px 8px" }}>Delete client</button>
+          </div>
           {group.deliverables.map((d) => (<DeliverableCard key={d.id} deliverable={d} onUpdate={loadAllDeliverables} />))}
         </div>
       ))}

@@ -13,6 +13,7 @@ interface Store {
   // Client mutations
   createClient: (data: { slug: string; name: string; sector?: string; pageTitle?: string; purchaserMode?: string }) => Promise<void>;
   updateClient: (slug: string, fields: Partial<Client>) => void;
+  deleteClient: (slug: string) => void;
 
   // Deliverable mutations
   createDeliverable: (data: { clientId: string; title: string; description: string; state: string; nextSteps?: string }) => Promise<void>;
@@ -90,6 +91,18 @@ export const useStore = create<Store>()((set, get) => ({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(fields),
     }).catch(err => console.error("Error updating client:", err));
+  },
+
+  deleteClient: (slug) => {
+    set(s => ({
+      deliverables: s.deliverables.filter(d => d.clientSlug !== slug),
+    }));
+
+    fetch(`/api/clients/${slug}`, {
+      method: "DELETE",
+    }).then(() => {
+      get().loadAllDeliverables();
+    }).catch(err => console.error("Error deleting client:", err));
   },
 
   createDeliverable: async (data) => {

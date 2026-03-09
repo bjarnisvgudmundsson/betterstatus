@@ -199,3 +199,19 @@ export async function PATCH(
     return NextResponse.json({ error: "Failed to update client" }, { status: 500 });
   }
 }
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ slug: string }> }
+) {
+  try {
+    const { slug } = await params;
+
+    await sql`DELETE FROM clients WHERE slug = ${slug}`;
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Error deleting client:", error);
+    return NextResponse.json({ error: "Failed to delete client" }, { status: 500 });
+  }
+}
